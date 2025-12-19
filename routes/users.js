@@ -108,19 +108,3 @@ router.post("/create-by-admin", auth, async (req, res) => {
 
 module.exports = router;
 
-    // Create new user with isAdmin = false
-    const newUser = await User.create({
-      username,
-      password: hashedPassword,
-      isAdmin: false
-    });
-
-    res.status(201).json({ message: "User created successfully", user: { username: newUser.username, isAdmin: newUser.isAdmin } });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-
-module.exports = router;
