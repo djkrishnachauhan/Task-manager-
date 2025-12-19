@@ -48,6 +48,5 @@ router.post("/create-by-admin", async (req, res) => {
   }
 });
 
-module.exports = router;
 
 module.exports = router;
