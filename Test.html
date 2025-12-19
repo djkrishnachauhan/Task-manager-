@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Task Manager</title>
+
+<style>
+body {
+    font-family: Segoe UI, Arial;
+    background: #f4f6f9;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1000px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+button {
+    padding: 7px 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    background: #007bff;
+    color: white;
+}
+
+button:hover { background: #0056b3; }
+
+select, input, textarea {
+    width: 100%;
+    padding: 7px;
+    margin-top: 5px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+th { background: #f0f2f5; }
+
+.task-title {
+    color: #007bff;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.completed {
+    text-decoration: line-through;
+    color: gray;
+}
+
+.action-btn { background: #6c757d; }
+.delete-btn { background: #dc3545; }
+
+/* MODAL */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.4);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background: white;
+    padding: 20px;
+    width: 420px;
+    border-radius: 8px;
+}
+
+.modal-footer {
+    text-align: right;
+    margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>Task Manager</h2>
+
+    <div class="toolbar">
+        <button onclick="openAdd()">+ New Task</button>
+        <select id="filter" onchange="render()">
+            <option value="all">All</option>
+            <option value="completed">Completed</option>
+            <option value="pending">Pending</option>
+        </select>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Due</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+    </table>
+</div>
+
+<!-- VIEW MODAL -->
+<div class="modal" id="viewModal" onclick="outsideClose(event,'viewModal')">
+<div class="modal-content">
+    <h3 id="vTitle"></h3>
+    <p><b>Description:</b> <span id="vDesc"></span></p>
+    <p><b>Due:</b> <span id="vDue"></span></p>
+    <p><b>Status:</b> <span id="vStatus"></span></p>
+    <div class="modal-footer">
+        <button onclick="closeModal('viewModal')">Close</button>
+    </div>
+</div>
+</div>
+
+<!-- ADD / EDIT MODAL -->
+<div class="modal" id="formModal" onclick="outsideClose(event,'formModal')">
+<div class="modal-content">
+    <h3 id="formTitle"></h3>
+    <input id="fTitle" placeholder="Title">
+    <textarea id="fDesc" placeholder="Description"></textarea>
+    <input id="fDue" type="datetime-local">
+    <label><input type="checkbox" id="fCompleted"> Completed</label>
+    <div class="modal-footer">
+        <button onclick="saveTask()">Save</button>
+        <button onclick="closeModal('formModal')" class="action-btn">Cancel</button>
+    </div>
+</div>
+</div>
+
+<script>
+const API = "https://task-manager-g0da.onrender.com/tasks";
+let tasks = [];
+let editId = null;
+
+window.onload = load;
+document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeAll();
+});
+
+async function load() {
+    const r = await fetch(API);
+    tasks = await r.json();
+    render();
+}
+
+function render() {
+    const filter = document.getElementById("filter").value;
+    const rows = document.getElementById("rows");
+    rows.innerHTML = "";
+
+    tasks.filter(t =>
+        filter === "all" ||
+        (filter === "completed" && t.isCompleted) ||
+        (filter === "pending" && !t.isCompleted)
+    ).forEach(t => {
+        rows.innerHTML += `
+        <tr>
+            <td><span class="task-title ${t.isCompleted?'completed':''}"
+                onclick="view('${t.id}')">${t.title}</span></td>
+            <td>${new Date(t.dueDateTime).toLocaleString()}</td>
+            <td>${t.isCompleted?'Completed':'Pending'}</td>
+            <td>
+                <button class="action-btn" onclick="edit('${t.id}')">Edit</button>
+                <button class="delete-btn" onclick="del('${t.id}')">Delete</button>
+            </td>
+        </tr>`;
+    });
+}
+
+/* VIEW */
+function view(id) {
+    const t = tasks.find(x=>x.id===id);
+    vTitle.innerText = t.title;
+    vDesc.innerText = t.description || "—";
+    vDue.innerText = new Date(t.dueDateTime).toLocaleString();
+    vStatus.innerText = t.isCompleted ? "Completed":"Pending";
+    open('viewModal');
+}
+
+/* ADD / EDIT */
+function openAdd() {
+    editId = null;
+    formTitle.innerText = "New Task";
+    fTitle.value = fDesc.value = "";
+    fCompleted.checked = false;
+    open('formModal');
+}
+
+function edit(id) {
+    const t = tasks.find(x=>x.id===id);
+    editId = id;
+    formTitle.innerText = "Edit Task";
+    fTitle.value = t.title;
+    fDesc.value = t.description;
+    fDue.value = t.dueDateTime.slice(0,16);
+    fCompleted.checked = t.isCompleted;
+    open('formModal');
+}
+
+async function saveTask() {
+    const body = {
+        title: fTitle.value,
+        description: fDesc.value,
+        dueDateTime: fDue.value,
+        isCompleted: fCompleted.checked
+    };
+
+    await fetch(editId?`${API}/${editId}`:API, {
+        method: editId?"PUT":"POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(body)
+    });
+
+    closeAll();
+    load();
+}
+
+/* DELETE */
+async function del(id) {
+    if (!confirm("Are you sure?")) return;
+    await fetch(`${API}/${id}`, { method:"DELETE" });
+    load();
+}
+
+/* MODAL HELPERS */
+function open(id){ document.getElementById(id).style.display="flex"; }
+function closeModal(id){ document.getElementById(id).style.display="none"; }
+function closeAll(){ document.querySelectorAll('.modal').forEach(m=>m.style.display="none"); }
+function outsideClose(e,id){ if(e.target.id===id) closeModal(id); }
+</script>
+
+</body>
+  </html>
+  
