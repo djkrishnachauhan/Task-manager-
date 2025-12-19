@@ -1,16 +1,22 @@
-const mongoose = require("../db");
+const mongoose = require("mongoose");
 
-const TaskSchema = new mongoose.Schema({
-    title: { type: String, required: true },
-    description: { type: String, default: "" },
-    dueDateTime: { type: Date, required: true },
-    isCompleted: { type: Boolean, default: false },
-    lastUpdatedTime: { type: Date, default: Date.now }
-});
+const LogSchema = new mongoose.Schema({
+    dateTime: { type: Date, default: Date.now },
+    alteredBy: String,
+    field: String
+}, { _id: false });
 
-TaskSchema.pre("save", function (next) {
-    this.lastUpdatedTime = new Date();
-    next();
-});
+module.exports = mongoose.model("Task", new mongoose.Schema({
+    title: String,
+    description: String,
+    dueDateTime: Date,
+    isCompleted: Boolean,
 
-module.exports = mongoose.model("Task", TaskSchema);
+    createdBy: String,
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: Date,
+
+    logs: [LogSchema]
+}));
