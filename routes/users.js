@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const User = require("../models/User");
 const bcrypt = require("bcrypt");
+const auth = require("../middleware/auth")
 
 router.post("/create", async (req, res) => {
     if (req.query.secretkey !== "krishnavtarsaini0011")
