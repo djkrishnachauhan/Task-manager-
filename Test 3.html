@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>THE KRISHH'S Task Manager</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+  font-family:Segoe UI,Arial;
+  background:#eef2ff;
+  margin:0;
+  min-height:100vh
+}
+header{
+  background:#1f2937;
+  color:white;
+  padding:12px 20px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center
+}
+header button{
+  background:#dc2626;
+  padding:6px 14px;
+  border:none;
+  border-radius:4px;
+  color:white;
+  cursor:pointer
+}
+.container{padding:20px}
+.card{
+  max-width:400px;
+  margin:80px auto;
+  background:white;
+  padding:20px;
+  border-radius:8px;
+  box-shadow:0 10px 25px rgba(0,0,0,.1)
+}
+input,select,textarea{
+  width:100%;
+  padding:8px;
+  margin:6px 0
+}
+button{
+  background:#2563eb;
+  border:none;
+  padding:8px 14px;
+  color:white;
+  border-radius:4px;
+  cursor:pointer
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:white;
+  margin-top:10px
+}
+th,td{
+  padding:8px;
+  border-bottom:1px solid #ddd
+}
+th{background:#1f2937;color:white}
+.status{
+  padding:4px 10px;
+  border-radius:20px;
+  font-size:12px;
+  font-weight:bold
+}
+.done{background:#16a34a;color:white}
+.pending{background:#facc15;color:black}
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.5);
+  display:none
+}
+.modal-content{
+  background:white;
+  max-width:420px;
+  margin:100px auto;
+  padding:20px;
+  border-radius:6px
+}
+@media(max-width:600px){
+  table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+
+<body>
+
+<header id="topBar" style="display:none">
+  <b>THE KRISHH'S Task Manager</b>
+  <button onclick="logout()">Logout</button>
+</header>
+
+<div class="container">
+
+<!-- LOGIN -->
+<div class="card" id="loginBox">
+  <h3>Login</h3>
+  <input id="loginUser" placeholder="Username">
+  <input id="loginPass" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+  <button onclick="openAdd()">+ New Task</button>
+
+  <select id="filter" onchange="loadTasks()">
+    <option value="">All</option>
+    <option value="completed">Completed</option>
+    <option value="pending">Pending</option>
+    <option value="my">Only My</option>
+    <option value="deleted" id="deletedOpt" hidden>Deleted</option>
+  </select>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Due</th>
+        <th>Status</th>
+        <th>By</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="modal-content" id="modalContent"></div>
+</div>
+
+<script>
+const API="https://task-manager-g0da.onrender.com";
+let token=localStorage.getItem("token")||"";
+let currentUser="",isAdmin=false,tasks=[];
+
+/* AUTO LOGIN */
+if(token) verifyToken();
+
+/* LOGIN */
+async function login(){
+  const r=await fetch(API+"/auth/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      username:loginUser.value,
+      password:loginPass.value
+    })
+  });
+  const d=await r.json();
+  if(!r.ok){
+    showError(d.message||"Login failed");
+    return;
+  }
+  saveSession(d);
+}
+
+/* VERIFY TOKEN */
+async function verifyToken(){
+  const r=await fetch(API+"/auth/me",{
+    headers:{Authorization:"Bearer "+token}
+  });
+  if(!r.ok){logout();return;}
+  const d=await r.json();
+  saveSession(d,true);
+}
+
+/* SAVE SESSION */
+function saveSession(d,skipToken){
+  if(!skipToken){
+    token=d.token;
+    localStorage.setItem("token",token);
+  }
+  currentUser=d.username;
+  isAdmin=d.isAdmin;
+  loginBox.style.display="none";
+  app.style.display="block";
+  topBar.style.display="flex";
+  if(isAdmin) deletedOpt.hidden=false;
+  loadTasks();
+}
+
+/* LOGOUT */
+function logout(){
+  localStorage.removeItem("token");
+  location.reload();
+}
+
+/* LOAD TASKS */
+async function loadTasks(){
+  let url=API+"/tasks";
+  if(filter.value==="deleted") url+="?deleted=true";
+  const r=await fetch(url,{
+    headers:{Authorization:"Bearer "+token}
+  });
+  tasks=await r.json();
+  render();
+}
+
+/* RENDER */
+function render(){
+  rows.innerHTML=tasks.map(t=>`
+    <tr>
+      <td onclick="view('${t._id}')">${t.title}</td>
+      <td>${new Date(t.dueDateTime).toLocaleString()}</td>
+      <td>
+        <span class="status ${t.isCompleted?'done':'pending'}">
+          ${t.isCompleted?'Completed':'Pending'}
+        </span>
+      </td>
+      <td>${t.createdBy}</td>
+    </tr>
+  `).join("");
+}
+
+/* VIEW */
+function view(id){
+  const t=tasks.find(x=>x._id===id);
+  modalContent.innerHTML=`
+    <h3>${t.title}</h3>
+    <p>${t.description||""}</p>
+    <button onclick="closeModal()">Close</button>
+  `;
+  modal.style.display="block";
+}
+
+/* ADD */
+function openAdd(){
+  modalContent.innerHTML=`
+    <h3>New Task</h3>
+    <input id="tTitle" placeholder="Title">
+    <input id="tDue" type="datetime-local">
+    <button onclick="create()">Create</button>
+  `;
+  modal.style.display="block";
+}
+async function create(){
+  await fetch(API+"/tasks",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      Authorization:"Bearer "+token
+    },
+    body:JSON.stringify({
+      title:tTitle.value,
+      dueDateTime:tDue.value
+    })
+  });
+  closeModal(); loadTasks();
+}
+
+/* ERROR POPUP */
+function showError(msg){
+  modalContent.innerHTML=`
+    <h3 style="color:red">Error</h3>
+    <p>${msg}</p>
+    <button onclick="closeModal()">OK</button>
+  `;
+  modal.style.display="block";
+}
+
+/* MODAL */
+function closeModal(){modal.style.display="none"}
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape") closeModal();
+});
+</script>
+
+</body>
+</html>
