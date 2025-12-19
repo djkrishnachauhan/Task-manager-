@@ -188,7 +188,13 @@ function viewTask(id){
     <p><b>Due:</b> ${new Date(t.dueDateTime).toLocaleString()}</p>
     <h4>Activity Logs</h4>
     <ul class="logs">
-      ${t.logs.map(l=>`<li>${new Date(l.dateTime).toLocaleString()}, <b>${l.alteredBy}</b>, ${l.field}</li>`).join("")}
+      ${ (t.logs||[]).map(l=>{
+          // Prefer showing the changed value (newValue / value) instead of only the field name
+          const val = (typeof l.newValue !== 'undefined' && l.newValue !== null) ? l.newValue
+                    : (typeof l.value !== 'undefined' && l.value !== null) ? l.value
+                    : l.field;
+          return `<li>${new Date(l.dateTime).toLocaleString()}, <b>${l.alteredBy}</b>, ${val}</li>`;
+        }).join("")}
     </ul>
     <button class="secondary" onclick="closeModal()">Close</button>
   `;
@@ -224,16 +230,40 @@ function editTask(id){
     <input id="tTitle" value="${t.title}">
     <textarea id="tDesc">${t.description||""}</textarea>
     <input id="tDue" type="datetime-local" value="${t.dueDateTime.slice(0,16)}">
+    <label style="display:block;margin:6px 0">Status:
+      <select id="tStatus" style="width:100%;padding:8px;margin-top:6px">
+        <option value="false" ${t.isCompleted ? '' : 'selected'}>Pending</option>
+        <option value="true" ${t.isCompleted ? 'selected' : ''}>Completed</option>
+      </select>
+    </label>
     <button onclick="updateTask('${id}')">Update</button>
     <button class="secondary" onclick="closeModal()">Cancel</button>
   `;
   modal.style.display="block";
 }
 async function updateTask(id){
+  const titleVal = document.getElementById('tTitle').value;
+  const descVal = document.getElementById('tDesc').value;
+  const dueVal = document.getElementById('tDue').value;
+  const statusEl = document.getElementById('tStatus');
+  const isCompletedVal = statusEl ? (statusEl.value === 'true') : undefined;
+
+  const orig = tasks.find(x=>x._id===id) || {};
+
+  const changes = [];
+  if((orig.title||'') !== (titleVal||'')) changes.push({field:'title', oldValue:orig.title||'', newValue:titleVal||''});
+  if((orig.description||'') !== (descVal||'')) changes.push({field:'description', oldValue:orig.description||'', newValue:descVal||''});
+  if((orig.dueDateTime||'') !== (dueVal||'')) changes.push({field:'dueDateTime', oldValue:orig.dueDateTime||'', newValue:dueVal||''});
+  if(typeof isCompletedVal !== 'undefined' && orig.isCompleted !== isCompletedVal) changes.push({field:'isCompleted', oldValue:orig.isCompleted, newValue:isCompletedVal});
+
+  const body = { title: titleVal, description: descVal, dueDateTime: dueVal };
+  if(typeof isCompletedVal !== 'undefined') body.isCompleted = isCompletedVal;
+  if(changes.length) body.field = changes;
+
   await fetch(API+"/tasks/"+id,{
     method:"PUT",
     headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
-    body:JSON.stringify({title:tTitle.value,description:tDesc.value,dueDateTime:tDue.value})
+    body:JSON.stringify(body)
   });
   closeModal(); loadTasks();
 }
@@ -241,7 +271,18 @@ async function updateTask(id){
 /* DELETE TASK */
 async function deleteTask(id){
   if(!confirm("Are you sure?")) return;
-  await fetch(API+"/tasks/"+id,{method:"DELETE",headers:{Authorization:"Bearer "+token}});
+  const t = tasks.find(x=>x._id===id) || {};
+  const deletedValues = {
+    title: t.title || '',
+    description: t.description || '',
+    dueDateTime: t.dueDateTime || '',
+    isCompleted: !!t.isCompleted
+  };
+  await fetch(API+"/tasks/"+id,{
+    method:"DELETE",
+    headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+    body:JSON.stringify({ deletedValues })
+  });
   loadTasks();
 }
 
@@ -284,4 +325,4 @@ function closeModal(){modal.style.display="none"}
 document.addEventListener("keydown",e=>{if(e.key==="Escape") closeModal()});
 </script>
 </body>
-</html>
+  </html>
