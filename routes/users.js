@@ -13,10 +13,10 @@ router.post("/create", async (req, res) => {
 });
 
 // ==================== NEW ROUTE ====================
-router.post("/create-by-admin", async (req, res) => {
+router.post("/create-by-admin",auth, async (req, res) => {
   try {
     // Get current user from token
-    const adminUser = await User.findById(req.userId);
+    const adminUser = await User.findById(req.user.id);
     if (!adminUser || !adminUser.isAdmin) {
       return res.status(403).json({ message: "You are not allowed to create users. Sorry!" });
     }
