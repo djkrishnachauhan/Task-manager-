@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>THE KRISHH'S Task Manager</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#eef2ff;min-height:100vh}
+header{background:#1f2937;color:white;padding:12px 20px;display:flex;justify-content:space-between;align-items:center}
+header button{background:#dc2626;padding:6px 14px;border:none;border-radius:4px;color:white;cursor:pointer}
+.container{padding:20px}
+.card{max-width:400px;margin:80px auto;background:white;padding:20px;border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,.1)}
+input,select,textarea{width:100%;padding:8px;margin:6px 0;box-sizing:border-box}
+button{background:#2563eb;border:none;padding:8px 14px;color:white;border-radius:4px;cursor:pointer;margin:2px}
+button.danger{background:#dc2626}
+button.secondary{background:#6b7280}
+table{width:100%;border-collapse:collapse;background:white;margin-top:10px}
+th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
+th{background:#1f2937;color:white;cursor:pointer}
+.status{padding:4px 10px;border-radius:20px;font-size:12px;font-weight:bold}
+.done{background:#16a34a;color:white}
+.pending{background:#facc15;color:black}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;overflow:auto;z-index:10}
+.modal-content{background:white;max-width:480px;margin:100px auto;padding:20px;border-radius:6px}
+.logs{max-height:150px;overflow:auto;font-size:13px}
+.logs li{border-bottom:1px solid #eee;padding:4px 0}
+.topbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+@media(max-width:600px){table{display:block;overflow-x:auto}}
+</style>
+</head>
+<body>
+
+<header id="topBar" style="display:none">
+  <b>THE KRISHH'S Task Manager</b>
+  <button onclick="logout()">Logout</button>
+</header>
+
+<div class="container">
+
+<!-- LOGIN -->
+<div class="card" id="loginBox">
+  <h3>Login</h3>
+  <input id="loginUser" placeholder="Username">
+  <input id="loginPass" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+  <div class="topbar">
+    <button onclick="openAdd()">+ New Task</button>
+    <select id="filter" onchange="loadTasks()">
+      <option value="">All</option>
+      <option value="completed">Completed</option>
+      <option value="pending">Pending</option>
+      <option value="my">Only My</option>
+      <option value="deleted" id="deletedOpt" hidden>Deleted</option>
+    </select>
+    <select id="sortBy" onchange="render()">
+      <option value="">Sort By</option>
+      <option value="title">Title</option>
+      <option value="dueDateTime">Due Date</option>
+      <option value="createdBy">Created By</option>
+      <option value="status">Status</option>
+    </select>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Due</th>
+        <th>Status</th>
+        <th>Created By</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="modal-content" id="modalContent"></div>
+</div>
+
+<script>
+const API="https://task-manager-g0da.onrender.com";
+let token=localStorage.getItem("token")||"";
+let currentUser="",isAdmin=false,tasks=[];
+
+/* AUTO LOGIN */
+if(token) verifyToken();
+
+/* LOGIN */
+async function login(){
+  const r=await fetch(API+"/auth/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({username:loginUser.value,password:loginPass.value})
+  });
+  const d=await r.json();
+  if(!r.ok){showError(d.message||"Login failed");return;}
+  saveSession(d);
+}
+
+/* VERIFY TOKEN */
+async function verifyToken(){
+  const r=await fetch(API+"/auth/me",{headers:{Authorization:"Bearer "+token}});
+  if(!r.ok){logout();return;}
+  const d=await r.json();
+  saveSession(d,true);
+}
+
+/* SAVE SESSION */
+function saveSession(d,skipToken){
+  if(!skipToken){token=d.token;localStorage.setItem("token",token);}
+  currentUser=d.username;
+  isAdmin=d.isAdmin;
+  loginBox.style.display="none";
+  app.style.display="block";
+  topBar.style.display="flex";
+  if(isAdmin) deletedOpt.hidden=false;
+  loadTasks();
+}
+
+/* LOGOUT */
+function logout(){
+  localStorage.removeItem("token");
+  location.reload();
+}
+
+/* LOAD TASKS */
+async function loadTasks(){
+  let url=API+"/tasks";
+  if(filter.value==="deleted") url+="?deleted=true";
+  const r=await fetch(url,{headers:{Authorization:"Bearer "+token}});
+  tasks=await r.json();
+  render();
+}
+
+/* RENDER TABLE */
+function render(){
+  let data=[...tasks];
+  if(filter.value==="completed") data=data.filter(t=>t.isCompleted);
+  if(filter.value==="pending") data=data.filter(t=>!t.isCompleted);
+  if(filter.value==="my") data=data.filter(t=>t.createdBy===currentUser);
+
+  if(sortBy.value){
+    data.sort((a,b)=>{
+      if(sortBy.value==="status") return a.isCompleted-b.isCompleted;
+      return (a[sortBy.value]||"").toString().localeCompare((b[sortBy.value]||""));
+    });
+  }
+
+  rows.innerHTML=data.map(t=>`
+    <tr>
+      <td onclick="viewTask('${t._id}')">${t.title}</td>
+      <td>${new Date(t.dueDateTime).toLocaleString()}</td>
+      <td><span class="status ${t.isCompleted?'done':'pending'}">${t.isCompleted?'Completed':'Pending'}</span></td>
+      <td>${t.createdBy}</td>
+      <td>
+        <button onclick="editTask('${t._id}')">Edit</button>
+        <button class="danger" onclick="deleteTask('${t._id}')">Delete</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+/* VIEW TASK DETAILS */
+function viewTask(id){
+  const t=tasks.find(x=>x._id===id);
+  modalContent.innerHTML=`
+    <h3>${t.title}</h3>
+    <p>${t.description||""}</p>
+    <p><b>Due:</b> ${new Date(t.dueDateTime).toLocaleString()}</p>
+    <h4>Activity Logs</h4>
+    <ul class="logs">
+      ${t.logs.map(l=>`<li>${new Date(l.dateTime).toLocaleString()}, <b>${l.alteredBy}</b>, ${l.field}</li>`).join("")}
+    </ul>
+    <button class="secondary" onclick="closeModal()">Close</button>
+  `;
+  modal.style.display="block";
+}
+
+/* ADD TASK */
+function openAdd(){
+  modalContent.innerHTML=`
+    <h3>New Task</h3>
+    <input id="tTitle" placeholder="Title">
+    <textarea id="tDesc" placeholder="Description"></textarea>
+    <input id="tDue" type="datetime-local">
+    <button onclick="createTask()">Create</button>
+    <button class="secondary" onclick="closeModal()">Cancel</button>
+  `;
+  modal.style.display="block";
+}
+async function createTask(){
+  await fetch(API+"/tasks",{
+    method:"POST",
+    headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+    body:JSON.stringify({title:tTitle.value,description:tDesc.value,dueDateTime:tDue.value})
+  });
+  closeModal(); loadTasks();
+}
+
+/* EDIT TASK */
+function editTask(id){
+  const t=tasks.find(x=>x._id===id);
+  modalContent.innerHTML=`
+    <h3>Edit Task</h3>
+    <input id="tTitle" value="${t.title}">
+    <textarea id="tDesc">${t.description||""}</textarea>
+    <input id="tDue" type="datetime-local" value="${t.dueDateTime.slice(0,16)}">
+    <button onclick="updateTask('${id}')">Update</button>
+    <button class="secondary" onclick="closeModal()">Cancel</button>
+  `;
+  modal.style.display="block";
+}
+async function updateTask(id){
+  await fetch(API+"/tasks/"+id,{
+    method:"PUT",
+    headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+    body:JSON.stringify({title:tTitle.value,description:tDesc.value,dueDateTime:tDue.value})
+  });
+  closeModal(); loadTasks();
+}
+
+/* DELETE TASK */
+async function deleteTask(id){
+  if(!confirm("Are you sure?")) return;
+  await fetch(API+"/tasks/"+id,{method:"DELETE",headers:{Authorization:"Bearer "+token}});
+  loadTasks();
+}
+
+/* ERROR POPUP */
+function showError(msg){
+  modalContent.innerHTML=`<h3 style="color:red">Error</h3><p>${msg}</p><button onclick="closeModal()">OK</button>`;
+  modal.style.display="block";
+}
+
+/* MODAL CLOSE */
+function closeModal(){modal.style.display="none"}
+document.addEventListener("keydown",e=>{if(e.key==="Escape") closeModal()});
+</script>
+</body>
+</html>
